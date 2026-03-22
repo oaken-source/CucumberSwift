@@ -12,26 +12,30 @@ import XCTest
 open class CucumberTest: XCTestCase {
     static var didRun = false
 
-    private static var suiteInstance: XCTestSuite?
+    /// Whether features have been parsed and steps registered.
+    /// We only do this once, but create a fresh XCTestSuite on each call
+    /// to defaultTestSuite because XCTest may call it multiple times and
+    /// each XCTestSuite carries its own XCTestSuiteRun state that cannot
+    /// be restarted.
+    private static var didSetup = false
 
     override public class var defaultTestSuite: XCTestSuite {
-        // notify reporters every time
         Cucumber.shared.reporters.forEach { $0.testSuiteStarted(at: Date()) }
 
-        // create default test suite only once
-        if let existingSuite = suiteInstance {
-            return existingSuite
+        if !didSetup {
+            didSetup = true
+            Cucumber.shared.features.removeAll()
+            if let bundle = (Cucumber.shared as? StepImplementation)?.bundle {
+                Cucumber.shared.readFromFeaturesFolder(in: bundle)
+            }
+            (Cucumber.shared as? StepImplementation)?.setupSteps()
+            assert(!Cucumber.shared.features.isEmpty, "CucumberSwift found no features to run. Check out our documentation for instructions on including you Features folder. Be aware it's a case sensitive search. If you're using the DSL, make sure your features are defined in the `setupSteps()` method.") // swiftlint:disable:this line_length
         }
 
+        // Always create a fresh suite — returning a cached suite whose
+        // XCTestSuiteRun has already completed causes XCTest to throw
+        // "Invalid attempt to start a test run that has already been started"
         let suite = XCTestSuite(forTestCaseClass: CucumberTest.self)
-        suiteInstance = suite
-
-        Cucumber.shared.features.removeAll()
-        if let bundle = (Cucumber.shared as? StepImplementation)?.bundle {
-            Cucumber.shared.readFromFeaturesFolder(in: bundle)
-        }
-        (Cucumber.shared as? StepImplementation)?.setupSteps()
-        assert(!Cucumber.shared.features.isEmpty, "CucumberSwift found no features to run. Check out our documentation for instructions on including you Features folder. Be aware it's a case sensitive search. If you're using the DSL, make sure your features are defined in the `setupSteps()` method.") // swiftlint:disable:this line_length
         generateAlltests(suite)
         return suite
     }
